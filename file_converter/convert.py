@@ -21,7 +21,7 @@ Here's how your responses should look:
 EXAMPLE 1
 
 <Users Question>
-convert file.webp to png
+conv file.webp to png
 <Your Answer>
 `'dwebp file.webp -o file.png'`
 
@@ -60,7 +60,7 @@ convert a video in /path/to/video.mp4 to a gif
         for chunk in completion_stream:
             response += chunk.choices[0].delta.content or ""
             print(chunk.choices[0].delta.content or "", end="")
-        print(f"Response: {response}")
+
         return response
 
 
@@ -76,16 +76,14 @@ class CommandExecutor:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python script.py 'convert <query>'")
+        print("Usage: python script.py 'conv <query>'")
         sys.exit(1)
 
     input_command = sys.argv[1]
-    if not input_command.startswith("convert "):
-        print("Invalid command. Please start with 'convert'")
-        sys.exit(1)
 
-    query = input_command.split("convert ", 1)[1]
-    parser = CommandParser(query)
+    # query = input_command.split("conv ", 1)[1]
+    print("Query:", input_command)
+    parser = CommandParser(input_command)
     system_command = parser.parse()
 
     if system_command:
