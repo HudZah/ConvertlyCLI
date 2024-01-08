@@ -1,0 +1,14 @@
+Metadata-Version: 2.1
+Name: your-package
+Version: 0.1.0
+Summary: A tool to convert and manipulate media files
+Home-page: https://github.com/yourusername/your_package
+Author: Your Name
+Author-email: your.email@example.com
+License: MIT
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: openai
+
+# Convert
