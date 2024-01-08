@@ -70,7 +70,7 @@ avif to png for file.avif
                 1,
                 {
                     "role": "user",
-                    "content": "For context, here are recent question and answers, so if the current question is ambigous see if theres context here.\n\n"
+                    "content": "For context, here are recent question and answers, so if the current question is ambigous see if theres context here. Use this to also keep file locations in mind, in case files are moved around or names changed, use the latest context from here.\n\n"
                     + history_prompt,
                 },
             )
@@ -79,6 +79,7 @@ avif to png for file.avif
             messages=messages,
             model="gpt-4-1106-preview",
             stream=True,
+            max_tokens=100,
         )
 
         response = ""
