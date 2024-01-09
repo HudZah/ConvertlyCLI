@@ -33,12 +33,12 @@ class CommandParser:
             history = f.read()
 
         history_prompt = (
-            "For context, here are recent question and answers, so if the current question is ambigous see if theres context here.\n\n"
+            "For context, here are recent question and answers, so if the current question is ambigous see if theres context here. If a past query has failed and did not execute, take it into account and try something different when re-prompted.\n\n"
             + history
         )
 
         system_prompt = f"""
-        You are a command line utility that quickly and succinctly converts images and videos and manipulates them. When a user asks a question, you respond with the most relevant command that can be executed within the command line, along with the required packages that need to be installed. If the command has pre-requisite tools to install, install them first before proceeding. Your responses should be clear and console-friendly, remember the command you output must be directly copyable and would execute in the command line.
+        You are a command line utility that quickly and succinctly converts images and videos and manipulates them. When a user asks a question, you respond with the most relevant command that can be executed within the command line, along with the required packages that need to be installed. If absolultely necessary, you may execute Python code to do a conversion. If the command has pre-requisite tools to install, install them first before proceeding. Your responses should be clear and console-friendly, remember the command you output must be directly copyable and would execute in the command line.
 
 Here's how your responses should look:
 
@@ -71,6 +71,15 @@ avif to png for file.avif
 <Your Answer>
 `magick file.avif file.png`
 
+EXAMPLE 5
+
+<Users Question>
+convert my pdf to docx, the file is /Users/path/file.pdf
+<Your Answer>
+`pip install pdf2docx`
+`python3 -c "from pdf2docx import parse; pdf_file = r'/Users/path/file.pdf'; docx_file = r'/Users/path/file.docx'; parse(pdf_file, docx_file, start=0, end=None)"`
+
+
 """
         messages = [
             {"role": "system", "content": system_prompt},
@@ -101,6 +110,7 @@ avif to png for file.avif
 
         for chunk in completion_stream:
             response += chunk.choices[0].delta.content or ""
+            print(f"\033[1;33;40mRunning...\033[0m", end="\r")
 
         # Write the last 5 commands to the history file
         with open(self.history_file_path, "a") as f:
@@ -114,9 +124,11 @@ class CommandExecutor:
     def execute(command):
         try:
             subprocess.run(command, check=True, shell=True)
-            print(f"\033[1;34;40mExecuted: {command}\033[0m")
+            print(f"\033[1;32;40mExecuted: {command}\033[0m")
         except subprocess.CalledProcessError as e:
-            print(f"An error occurred: {e}")
+            print(
+                f"\033[1;31;40mAn error occurred while executing the command: {e}\033[0m"
+            )
 
 
 def clear_history(history_file_path):
@@ -141,23 +153,28 @@ def main():
 
     if args.clear:
         clear_history(history_file_path)
-        print("History cleared.")
+        print("\033[1;32;40mHistory cleared.\033[0m")
         return
 
-    if args.query is None:
-        print("Usage: python script.py 'conv <query>' or '--clear' to clear history")
+    if not args.query:
+        print(
+            "\033[1;31;40mUsage: python script.py 'conv <query>' or '--clear' to clear history\033[0m"
+        )
         return
 
     query = " ".join(args.query)
-    print(query)
+    print("\033[1;34;40mQuerying: " + query + "\033[0m")
 
     command_parser = CommandParser(query, history_file_path)
     system_command = command_parser.parse()
 
     if system_command:
+        print("\033[1;36;40mRunning command: " + system_command + "\033[0m")
         CommandExecutor.execute(system_command)
     else:
-        print("Could not parse or execute the command.")
+        print(
+            "Could not parse or execute the command. Please ensure the command is valid."
+        )
 
 
 if __name__ == "__main__":
