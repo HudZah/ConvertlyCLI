@@ -3,6 +3,7 @@ import subprocess
 from openai import OpenAI
 import tempfile
 import os
+import configparser
 
 
 class CommandParser:
@@ -10,8 +11,22 @@ class CommandParser:
         self.query = query
         self.history_file_path = history_file_path
 
+    def get_config(self):
+        config = configparser.ConfigParser()
+        config.read("config.ini")
+        api_key = os.getenv("OPENAI_API_KEY")
+
+        if not config.has_section("OPENAI") or "API_KEY" not in config["OPENAI"]:
+            if not api_key:
+                api_key = input("Please enter your OpenAI key: ")
+            config["OPENAI"] = {"API_KEY": api_key}
+            with open("config.ini", "w") as configfile:
+                config.write(configfile)
+        return config
+
     def parse(self):
-        client = OpenAI()
+        self.config = self.get_config()
+        client = OpenAI(api_key=self.config["OPENAI"]["API_KEY"])
 
         # Retrieve the history file
         with open(self.history_file_path, "r") as f:
