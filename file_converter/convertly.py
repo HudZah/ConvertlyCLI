@@ -1,6 +1,6 @@
 import argparse
 import subprocess
-from openai import OpenAI
+from openpipe import OpenAI
 import tempfile
 import os
 import configparser
@@ -26,19 +26,27 @@ class CommandParser:
 
     def parse(self):
         self.config = self.get_config()
-        client = OpenAI(api_key=self.config["OPENAI"]["API_KEY"])
+        client = OpenAI(
+            api_key=self.config["OPENAI"]["API_KEY"],
+            openpipe={
+                "api_key": os.getenv("OPENPIPE_API_KEY"),
+            },
+        )
 
         # Retrieve the history file
-        with open(self.history_file_path, "r") as f:
-            history = f.read()
+        history = get_recent_history(5, self.history_file_path)
 
         history_prompt = (
-            "For context, here are recent question and answers, so if the current question is ambigous see if theres context here. If a past query has failed and did not execute, take it into account and try something different when re-prompted.\n\n"
-            + history
+            "For context, here are recent question and answers, use this in case queries are confusing or if a past query has failed. In case there are amiguity with the queries, use this as additional context. \n\n"
+            + "\n".join(history)
         )
 
         system_prompt = f"""
         You are a command line utility that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolultely necessary, you may execute Python code to do a conversion. Your responses should be clear and console-friendly, remember the command you output must be directly copyable and would execute in the command line. We only want you to execute the command to result in an output.
+
+        Things to NOT do:
+
+        Do not include ```sh``` or ```bash``` in your response, this is not a bash script, it is a command line utility. Run commands directly.
 
 Here's how your responses should look:
 
@@ -48,6 +56,10 @@ EXAMPLE 1
 conv file.webp to png
 <Your Answer>
 'dwebp file.webp -o file.png'
+<User Question>
+rotate that image by 90 degrees
+<Your Answer>
+'convert file.png -rotate 90 rotated_file.png'
 
 EXAMPLE 2
 
@@ -83,9 +95,9 @@ EXAMPLE 6
 
 <Users Question>
 copy all of Documents/Screenshots to a folder called Screenshots2 in the same directory
-
 <Your Answer>
 cp -a Documents/Screenshots Documents/test
+
 
 """
         messages = [
@@ -111,6 +123,10 @@ cp -a Documents/Screenshots Documents/test
             model="gpt-4-1106-preview",
             stream=True,
             max_tokens=100,
+            openpipe={
+                "tags": {"prompt_id": "commands", "any_key": "any_value"},
+                "log_request": True,  # Enable/disable data collection. Defaults to True.
+            },
         )
 
         response = ""
@@ -143,18 +159,28 @@ def clear_history(history_file_path):
         f.write("")
 
 
+def get_recent_history(n, history_file_path):
+    if not os.path.exists(history_file_path):
+        open(history_file_path, "w").close()
+
+    with open(history_file_path, "r") as f:
+        blocks = f.read().split("\n\n")[:-1]
+
+    return blocks[-n:]
+
+
 def main():
     temp_dir = tempfile.gettempdir()
     history_file_path = os.path.join(temp_dir, "history.txt")
-    if not os.path.exists(history_file_path):
-        with open(history_file_path, "w") as f:
-            pass
 
     parser = argparse.ArgumentParser(
         description="Conv is a command line tool to easily execute file conversions, image manipulations, and file operations quickly."
     )
     parser.add_argument("query", type=str, nargs="*", help="The query to be processed.")
     parser.add_argument("--clear", action="store_true", help="Clear the history.")
+    parser.add_argument(
+        "--hist", action="store_true", help="View the recent history of queries."
+    )
 
     args = parser.parse_args()
 
@@ -163,9 +189,16 @@ def main():
         print("\033[1;32;40mHistory cleared.\033[0m")
         return
 
+    if args.hist:
+        history = get_recent_history(5, history_file_path)
+        print("\033[1;32;40mRecent History:\033[0m")
+        for item in history:
+            print(item + "\n")
+        return
+
     if not args.query:
         print(
-            "\033[1;31;40mUsage: python script.py 'conv <query>' or '--clear' to clear history\033[0m"
+            "\033[1;31;40mUsage: python script.py 'conv <query>' or '--clear' to clear history or '--hist' to view history\033[0m"
         )
         return
 
