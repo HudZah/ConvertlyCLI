@@ -15,3 +15,5 @@ var/
 .installed.cfg
 *.egg
 .DS_Store
+config.ini
+```
