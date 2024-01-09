@@ -15,16 +15,16 @@ class CommandParser:
         config = configparser.ConfigParser()
         config.read("config.ini")
         api_key = os.getenv("OPENAI_API_KEY")
-        openpipe_api_key = os.getenv("OPENPIPE_API_KEY")
+        self.openpipe_api_key = os.getenv("OPENPIPE_API_KEY")
 
         if not config.has_section("OPENAI") or "API_KEY" not in config["OPENAI"]:
             if not api_key:
                 api_key = input("Please enter your OpenAI key: ")
             config["OPENAI"] = {"API_KEY": api_key}
-        if not config.has_section("OPENPIPE") or "API_KEY" not in config["OPENPIPE"]:
-            if not openpipe_api_key:
-                openpipe_api_key = input("Please enter your OpenPipe key: ")
-            config["OPENPIPE"] = {"API_KEY": openpipe_api_key}
+        # if not config.has_section("OPENPIPE") or "API_KEY" not in config["OPENPIPE"]:
+        #     if not openpipe_api_key:
+        #         openpipe_api_key = input("Please enter your OpenPipe key: ")
+        # config["OPENPIPE"] = {"API_KEY": openpipe_api_key}
         with open("config.ini", "w") as configfile:
             config.write(configfile)
         return config
@@ -34,7 +34,8 @@ class CommandParser:
         client = OpenAI(
             api_key=self.config["OPENAI"]["API_KEY"],
             openpipe={
-                "api_key": self.config["OPENPIPE"]["API_KEY"],
+                # "api_key": self.config["OPENPIPE"]["API_KEY"],
+                "api_key": self.openpipe_api_key,
             },
         )
 
