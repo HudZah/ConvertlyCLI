@@ -1,6 +1,6 @@
 # Convertly
 
-A command line tool to execute simple file conversions, image/video manipulations and folder changes. Use with ```conv <query>```. Convertly is constantly being fine-tuned using your outputs and will work better over time.
+A command line tool to execute simple file conversions, image/video manipulations and folder changes. Use with ```conv <query>```. Note that your outputs are being used to constantly being fine-tune a model to make it work better over time.
 
 ## Installation
 ```bash
@@ -39,7 +39,7 @@ conv --clear
 * convert image.png -rotate 90 rotated_file.png
 ```
 ## Support
-Convertly wont be perfect; if you run into any issues, please send me a message or create an issue. 
+Convertly wont be perfect; if you run into any issues, please send me a message or create an issue.
 
 
 
