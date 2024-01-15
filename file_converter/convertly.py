@@ -63,11 +63,12 @@ EXAMPLE 1
 <Users Question>
 conv file.webp to png
 <Your Answer>
-'dwebp file.webp -o file.png'
+dwebp file.webp -o file.png
 <User Question>
 rotate that image by 90 degrees
 <Your Answer>
-'convert file.png -rotate 90 rotated_file.png'
+brew install imagemagick
+convert file.png -rotate 90 rotated_file.png
 
 EXAMPLE 2
 
