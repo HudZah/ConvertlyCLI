@@ -4,6 +4,7 @@ from openpipe import OpenAI
 import tempfile
 import os
 import configparser
+import platform
 
 
 class CommandParser:
@@ -48,7 +49,7 @@ class CommandParser:
         )
 
         system_prompt = f"""
-        You are a command line utility that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolultely necessary, you may execute Python code to do a conversion. Your responses should be clear and console-friendly, remember the command you output must be directly copyable and would execute in the command line. We only want you to execute the command to result in an output.
+        You are a command line utility for the {platform.system()} OS that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolultely necessary, you may execute Python code to do a conversion. Your responses should be clear and console-friendly, remember the command you output must be directly copyable and would execute in the command line. We only want you to execute the command to result in an output.
 
         Things to NOT do:
 
@@ -142,9 +143,7 @@ cp -a Documents/Screenshots Documents/test
             response += chunk.choices[0].delta.content or ""
             print(f"\033[1;33;40mRunning...\033[0m", end="\r")
 
-        # Write the last 5 commands to the history file
-        with open(self.history_file_path, "a") as f:
-            f.write(f"Question: {self.query}\nAnswer: {response}\n\n")
+        
 
         return response
 
@@ -152,13 +151,17 @@ cp -a Documents/Screenshots Documents/test
 class CommandExecutor:
     @staticmethod
     def execute(command):
+        status = ""
         try:
             subprocess.run(command, check=True, shell=True)
             print(f"\033[1;32;40mExecuted: {command}\033[0m")
+            status = "Success"
         except subprocess.CalledProcessError as e:
             print(
                 f"\033[1;31;40mAn error occurred while executing the command: {e}\033[0m"
             )
+            status = f"An error occurred while executing the command: {e}"
+        return status
 
 
 def clear_history(history_file_path):
@@ -174,6 +177,10 @@ def get_recent_history(n, history_file_path):
         blocks = f.read().split("\n\n")[:-1]
 
     return blocks[-n:]
+
+def modify_history(history_file_path, query, response, status):
+    with open(history_file_path, "a") as f:
+        f.write(f"Question: {query}\nAnswer: {response}\nStatus: {status}\n\n")
 
 
 def main():
@@ -217,7 +224,8 @@ def main():
 
     if system_command:
         print("\033[1;36;40mRunning command: " + system_command + "\033[0m")
-        CommandExecutor.execute(system_command)
+        status = CommandExecutor.execute(system_command)
+        modify_history(history_file_path, query, system_command, status)
     else:
         print(
             "Could not parse or execute the command. Please ensure the command is valid."

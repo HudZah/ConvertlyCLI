@@ -7,6 +7,7 @@ setup(
     entry_points={"console_scripts": ["conv=file_converter.convertly:main"]},
     install_requires=[
         "openai",
+        "openpipe",
     ],
     python_requires=">=3.6",
     author="HudZah",
