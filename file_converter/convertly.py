@@ -5,6 +5,7 @@ import tempfile
 import os
 import configparser
 import platform
+import requests
 
 
 class CommandParser:
@@ -30,17 +31,24 @@ class CommandParser:
             config.write(configfile)
         return config
 
+    def get_command(self, api_key, messages):
+        url = "https://convertly-41cf77f682ee.herokuapp.com/api"
+        data = {
+            "api_key": api_key,
+            "messages": messages,
+        }
+        print(f"messages: {messages}")
+        response = requests.post(url, json=data)
+
+        if response.status_code != 200:
+            raise Exception(f"Error: {response.status_code} - {response.text}")
+
+        return response.json()
+
     def parse(self):
         self.config = self.get_config()
-        client = OpenAI(
-            api_key=self.config["OPENAI"]["API_KEY"],
-            openpipe={
-                # "api_key": self.config["OPENPIPE"]["API_KEY"],
-                "api_key": self.openpipe_api_key,
-            },
-        )
+        api_key = self.config["OPENAI"]["API_KEY"]
 
-        # Retrieve the history file
         history = get_recent_history(5, self.history_file_path)
 
         history_prompt = (
@@ -126,25 +134,13 @@ cp -a Documents/Screenshots Documents/test
                     + history_prompt,
                 },
             )
-
-        completion_stream = client.chat.completions.create(
-            messages=messages,
-            model="gpt-4-1106-preview",
-            stream=True,
-            max_tokens=100,
-            openpipe={
-                "tags": {"prompt_id": "commands", "any_key": "any_value"},
-                "log_request": True,  # Enable/disable data collection. Defaults to True.
-            },
-        )
-
-        response = ""
-
-        for chunk in completion_stream:
-            response += chunk.choices[0].delta.content or ""
-            print(f"\033[1;33;40mRunning...\033[0m", end="\r")
-
-        
+        print(f"\033[1;33;40mRunning...\033[0m", end="\r")
+        response, status_code = self.get_command(api_key, messages)
+        if status_code != 200:
+            error_message = response.get("error", "Unknown error")
+            print(
+                f"\033[1;31;40mError: Unable to get command, status code: {status_code}, error: {error_message}\033[0m"
+            )
 
         return response
 
@@ -178,6 +174,7 @@ def get_recent_history(n, history_file_path):
         blocks = f.read().split("\n\n")[:-1]
 
     return blocks[-n:]
+
 
 def modify_history(history_file_path, query, response, status):
     with open(history_file_path, "a") as f:
