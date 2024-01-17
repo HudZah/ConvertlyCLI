@@ -8,28 +8,30 @@ import platform
 import requests
 
 
+class ConfigManager:
+    def __init__(self):
+        self.config = configparser.ConfigParser()
+        self.config.read("config.ini")
+
+    def get_api_key(self, key_name, section_name):
+        api_key = os.getenv(key_name)
+        if (
+            not self.config.has_section(section_name)
+            or "API_KEY" not in self.config[section_name]
+        ):
+            if not api_key:
+                api_key = input(f"Please enter your {section_name} key: ")
+            self.config[section_name] = {"API_KEY": api_key}
+            with open("config.ini", "w") as configfile:
+                self.config.write(configfile)
+        return api_key
+
+
 class CommandParser:
     def __init__(self, query, history_file_path):
         self.query = query
         self.history_file_path = history_file_path
-
-    def get_config(self):
-        config = configparser.ConfigParser()
-        config.read("config.ini")
-        api_key = os.getenv("OPENAI_API_KEY")
-        self.openpipe_api_key = os.getenv("OPENPIPE_API_KEY")
-
-        if not config.has_section("OPENAI") or "API_KEY" not in config["OPENAI"]:
-            if not api_key:
-                api_key = input("Please enter your OpenAI key: ")
-            config["OPENAI"] = {"API_KEY": api_key}
-        # if not config.has_section("OPENPIPE") or "API_KEY" not in config["OPENPIPE"]:
-        #     if not openpipe_api_key:
-        #         openpipe_api_key = input("Please enter your OpenPipe key: ")
-        # config["OPENPIPE"] = {"API_KEY": openpipe_api_key}
-        with open("config.ini", "w") as configfile:
-            config.write(configfile)
-        return config
+        self.config_manager = ConfigManager()
 
     def get_command(self, api_key, messages):
         url = "https://convertly-41cf77f682ee.herokuapp.com/api"
@@ -43,20 +45,49 @@ class CommandParser:
         if response.status_code != 200:
             raise Exception(f"Error: {response.status_code} - {response.text}")
 
-        return response.json()
+        return response.json(), response.status_code
 
     def parse(self):
-        self.config = self.get_config()
-        api_key = self.config["OPENAI"]["API_KEY"]
-
+        api_key = self.config_manager.get_api_key("OPENAI_API_KEY", "OPENAI")
         history = get_recent_history(5, self.history_file_path)
+        history_prompt = self._generate_history_prompt(history)
+        system_prompt = self._generate_system_prompt()
 
-        history_prompt = (
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": "Answer this as briefly as possible: " + self.query,
+            },
+        ]
+
+        if history:
+            messages.insert(
+                1,
+                {
+                    "role": "user",
+                    "content": "For context, here are recent question and answers, so if the current question is ambigous see if theres context here. Use this to also keep file locations in mind, in case files are moved around or names changed, use the latest context from here.\n\n"
+                    + history_prompt,
+                },
+            )
+        print(f"\033[1;33;40mRunning...\033[0m", end="\r")
+        response, status_code = self.get_command(api_key, messages)
+        if status_code != 200:
+            error_message = response.get("error", "Unknown error")
+            print(
+                f"\033[1;31;40mError: Unable to get command, status code: {status_code}, error: {error_message}\033[0m"
+            )
+
+        return response
+
+    def _generate_history_prompt(self, history):
+        return (
             "For context, here are recent question and answers, use this in case queries are confusing or if a past query has failed. In case there are amiguity with the queries, use this as additional context. \n\n"
             + "\n".join(history)
         )
 
-        system_prompt = f"""
+    def _generate_system_prompt(self):
+        return f"""
         You are a command line utility for the {platform.system()} OS that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolultely necessary, you may execute Python code to do a conversion. Your responses should be clear and console-friendly, remember the command you output must be directly copyable and would execute in the command line. We only want you to execute the command to result in an output.
 
         Things to NOT do:
@@ -117,32 +148,6 @@ cp -a Documents/Screenshots Documents/test
 
 
 """
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": "Answer this as briefly as possible: " + self.query,
-            },
-        ]
-
-        if history:
-            messages.insert(
-                1,
-                {
-                    "role": "user",
-                    "content": "For context, here are recent question and answers, so if the current question is ambigous see if theres context here. Use this to also keep file locations in mind, in case files are moved around or names changed, use the latest context from here.\n\n"
-                    + history_prompt,
-                },
-            )
-        print(f"\033[1;33;40mRunning...\033[0m", end="\r")
-        response, status_code = self.get_command(api_key, messages)
-        if status_code != 200:
-            error_message = response.get("error", "Unknown error")
-            print(
-                f"\033[1;31;40mError: Unable to get command, status code: {status_code}, error: {error_message}\033[0m"
-            )
-
-        return response
 
 
 class CommandExecutor:
