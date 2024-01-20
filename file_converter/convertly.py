@@ -39,13 +39,14 @@ class CommandParser:
             "api_key": api_key,
             "messages": messages,
         }
-        print(f"messages: {messages}")
-        response = requests.post(url, json=data)
+        data = requests.post(url, json=data).json()
+        response = data.get("response", "")
+        status_code = int(data.get("status", 500))
 
-        if response.status_code != 200:
-            raise Exception(f"Error: {response.status_code} - {response.text}")
+        if status_code != 200:
+            raise Exception(f"Error: {status_code} - {response}")
 
-        return response.json(), response.status_code
+        return response, status_code
 
     def parse(self):
         api_key = self.config_manager.get_api_key("OPENAI_API_KEY", "OPENAI")
