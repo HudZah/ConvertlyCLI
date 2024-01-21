@@ -57,7 +57,8 @@ class CommandParser:
             {"role": "system", "content": system_prompt},
             {
                 "role": "user",
-                "content": "Answer this as briefly as possible: " + self.query,
+                "content": "Answer this as briefly as possible and using the latest context: "
+                + self.query,
             },
         ]
 
