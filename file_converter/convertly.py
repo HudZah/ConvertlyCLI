@@ -1,6 +1,5 @@
 import argparse
 import subprocess
-from openpipe import OpenAI
 import tempfile
 import os
 import configparser
