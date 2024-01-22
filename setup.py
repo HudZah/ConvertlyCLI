@@ -2,13 +2,10 @@ from setuptools import setup, find_packages
 
 setup(
     name="convertly",
-    version="0.4.0",
+    version="0.4.1",
     packages=find_packages(),
     entry_points={"console_scripts": ["conv=file_converter.convertly:main"]},
-    install_requires=[
-        "openai",
-        "openpipe",
-    ],
+    install_requires=["openai", "openpipe", "requests"],
     python_requires=">=3.6",
     author="HudZah",
     author_email="hudzah@hudzah.com",
