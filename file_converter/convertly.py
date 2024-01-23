@@ -14,6 +14,7 @@ class ConfigManager:
 
     def get_api_key(self, key_name, section_name):
         api_key = os.getenv(key_name)
+
         if (
             not self.config.has_section(section_name)
             or "API_KEY" not in self.config[section_name]
@@ -23,6 +24,8 @@ class ConfigManager:
             self.config[section_name] = {"API_KEY": api_key}
             with open("config.ini", "w") as configfile:
                 self.config.write(configfile)
+        else:
+            api_key = self.config[section_name]["API_KEY"]
         return api_key
 
 
@@ -38,7 +41,12 @@ class CommandParser:
             "api_key": api_key,
             "messages": messages,
         }
-        data = requests.post(url, json=data).json()
+        request = requests.post(url, json=data)
+        try:
+            data = request.json()
+        except Exception as e:
+            print(f"Error: {e}")
+            data = {"status": 500, "response": "Error: " + str(e)}
         response = data.get("response", "")
         status_code = int(data.get("status", 500))
 
