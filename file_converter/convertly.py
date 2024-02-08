@@ -28,15 +28,24 @@ class ConfigManager:
             api_key = self.config[section_name]["API_KEY"]
         return api_key
 
+    def set_api_key(self, key_name, section_name, new_api_key):
+        self.config[section_name] = {"API_KEY": new_api_key}
+        with open("config.ini", "w") as configfile:
+            self.config.write(configfile)
+
 
 class CommandParser:
-    def __init__(self, query, history_file_path):
+    def __init__(self, query, history_file_path, new_api_key=None):
         self.query = query
         self.history_file_path = history_file_path
         self.config_manager = ConfigManager()
+        if new_api_key:
+            self.config_manager.set_api_key("OPENAI_API_KEY", "OPENAI", new_api_key)
 
     def get_command(self, api_key, messages):
+        # url = "http://127.0.0.1:5000/api"
         url = "https://convertly-41cf77f682ee.herokuapp.com/api"
+
         data = {
             "api_key": api_key,
             "messages": messages,
@@ -95,8 +104,7 @@ class CommandParser:
         )
 
     def _generate_system_prompt(self):
-        return f"""
-        You are a command line utility for the {platform.system()} OS that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolultely necessary, you may execute Python code to do a conversion. Your responses should be clear and console-friendly, remember the command you output must be directly copyable and would execute in the command line. We only want you to execute the command to result in an output.
+        return f"""You are a command line utility for the {platform.system()} OS that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolultely necessary, you may execute Python code to do a conversion. Your responses should be clear and console-friendly, remember the command you output must be directly copyable and would execute in the command line. We only want you to execute the command to result in an output.
 
         Things to NOT do:
 
@@ -206,6 +214,7 @@ def main():
     parser.add_argument(
         "--hist", action="store_true", help="View the recent history of queries."
     )
+    parser.add_argument("--key", type=str, help="Enter a new OpenAI API key.")
 
     args = parser.parse_args()
 
@@ -219,6 +228,12 @@ def main():
         print("\033[1;32;40mRecent History:\033[0m")
         for item in history:
             print(item + "\n")
+        return
+
+    if args.key:
+        new_api_key = args.key
+        command_parser = CommandParser("", history_file_path, new_api_key)
+        print(f"\033[1;32;40mAPI Key updated successfully to: {new_api_key}\033[0m")
         return
 
     if not args.query:
