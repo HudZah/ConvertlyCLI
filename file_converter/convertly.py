@@ -112,7 +112,7 @@ class CommandParser:
 
         return f"""You are a command line utility for the {platform.system()} OS that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolutely necessary, you may execute Python code to do a conversion. Your responses should be clear and console-friendly. If there are file or folder paths, then they MUST be quoted in your response.
 
-        If there is an error, think about why the error: {status_part} occurred, and consider it when generating the next command, only if it's relevant. If there is no error, ignore this.
+        If there is an error, echo the problem and why the error: {status_part} occurred in the format echo "Error: (error)", and consider it when generating the next command, only if it's relevant. If there is no error, ignore this.
 
         Things to NOT do:
 
@@ -178,15 +178,21 @@ class CommandExecutor:
     @staticmethod
     def execute(command):
         status = ""
-        try:
-            subprocess.run(command, check=True, shell=True)
-            print(f"\033[1;32;40mExecuted: {command}\033[0m")
-            status = "Success"
-        except subprocess.CalledProcessError as e:
+        if command.startswith('echo "Error:'):
             print(
-                f"\033[1;31;40mAn error occurred while executing the command: {e}\033[0m"
+                f"\033[1;31;40mAn error occurred while executing the command: {command.split('Error: ')[-1]}\033[0m"
             )
-            status = f"An error occurred while executing the command: {e}"
+            status = f"An error occurred while executing the command: {command.split('Error: ')[-1]}"
+        else:
+            try:
+                subprocess.run(command, check=True, shell=True)
+                print(f"\033[1;32;40mExecuted: {command}\033[0m")
+                status = "Success"
+            except subprocess.CalledProcessError as e:
+                print(
+                    f"\033[1;31;40mAn error occurred while executing the command: {e}\033[0m"
+                )
+                status = f"An error occurred while executing the command: {e}"
         return status
 
 
