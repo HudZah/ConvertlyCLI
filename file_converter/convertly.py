@@ -35,9 +35,9 @@ class ConfigManager:
 
 
 class CommandParser:
-    def __init__(self, query, history_file_path, new_api_key=None):
+    def __init__(self, query, history_manager, new_api_key=None):
         self.query = query
-        self.history_file_path = history_file_path
+        self.history_manager = history_manager
         self.config_manager = ConfigManager()
         if new_api_key:
             self.config_manager.set_api_key("OPENAI_API_KEY", "OPENAI", new_api_key)
@@ -66,7 +66,7 @@ class CommandParser:
 
     def parse(self):
         api_key = self.config_manager.get_api_key("OPENAI_API_KEY", "OPENAI")
-        history = get_recent_history(5, self.history_file_path)
+        history = self.history_manager.get_recent_history(5)
         history_prompt = self._generate_history_prompt(history)
         system_prompt = self._generate_system_prompt()
 
@@ -99,16 +99,24 @@ class CommandParser:
 
     def _generate_history_prompt(self, history):
         return (
-            "For context, here are recent question and answers, use this in case queries are confusing or if a past query has failed. In case there are amiguity with the queries, use this as additional context. \n\n"
+            "For context, here's the history of the last five questions, answers and the status of their execution, if a query has failed, try something different. \n\n"
             + "\n".join(history)
         )
 
     def _generate_system_prompt(self):
-        return f"""You are a command line utility for the {platform.system()} OS that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolultely necessary, you may execute Python code to do a conversion. Your responses should be clear and console-friendly, remember the command you output must be directly copyable and would execute in the command line. We only want you to execute the command to result in an output.
+        latest_history_status = self.history_manager.get_recent_history(1)
+        if latest_history_status:
+            status_part = latest_history_status[0].split("Status: ")[-1]
+        else:
+            status_part = "No error"
+
+        return f"""You are a command line utility for the {platform.system()} OS that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolutely necessary, you may execute Python code to do a conversion. Your responses should be clear and console-friendly. If there are file or folder paths, then they MUST be quoted in your response.
+
+        If there is an error, think about why the error: {status_part} occurred, and consider it when generating the next command, only if it's relevant. If there is no error, ignore this.
 
         Things to NOT do:
 
-        - Do not include ```sh``` or ```bash``` in your response, this is not a bash script, it is a command line utility. Run commands directly.
+        - Do not include codeblocks or any ``` in your response, this is not a bash script, it is a command line utility. Commands should be directly executable in the command line.
         - Do not assume a user has pre-requisite packages installed, always install it anyways. 
 
 Here's how your responses should look:
@@ -118,12 +126,12 @@ EXAMPLE 1
 <Users Question>
 conv file.webp to png
 <Your Answer>
-dwebp file.webp -o file.png
+dwebp "file.webp" -o "file.png"
 <User Question>
 rotate that image by 90 degrees
 <Your Answer>
 brew install imagemagick
-convert file.png -rotate 90 rotated_file.png
+convert "file.png" -rotate 90 "rotated_file.png"
 
 EXAMPLE 2
 
@@ -131,21 +139,21 @@ EXAMPLE 2
 rotate an image by 90 degrees
 <Your Answer>
 brew install imagemagick
-convert file.png -rotate 90 rotated_file.png
+convert "file.png" -rotate 90 "rotated_file.png"
 
 EXAMPLE 3
 
 <Users Question>
 convert a video in /path/to/video.mp4 to a gif
 <Your Answer>
-ffmpeg -i /path/to/video.mp4 /path/to/video.gif
+ffmpeg -i "/path/to/video.mp4" "/path/to/video.gif"
 
 EXAMPLE 4
 
 <Users Question>
 avif to png for file.avif
 <Your Answer>
-magick file.avif file.png
+magick "file.avif" "file.png"
 
 EXAMPLE 5
 
@@ -160,7 +168,7 @@ EXAMPLE 6
 <Users Question>
 copy all of Documents/Screenshots to a folder called Screenshots2 in the same directory
 <Your Answer>
-cp -a Documents/Screenshots Documents/test
+cp -a "Documents/Screenshots Documents/test"
 
 
 """
@@ -182,29 +190,32 @@ class CommandExecutor:
         return status
 
 
-def clear_history(history_file_path):
-    with open(history_file_path, "w") as f:
-        f.write("")
+class HistoryManager:
+    def __init__(self, history_file_path):
+        self.history_file_path = history_file_path
 
+    def clear_history(self):
+        with open(self.history_file_path, "w") as f:
+            f.write("")
 
-def get_recent_history(n, history_file_path):
-    if not os.path.exists(history_file_path):
-        open(history_file_path, "w").close()
+    def get_recent_history(self, n):
+        if not os.path.exists(self.history_file_path):
+            open(self.history_file_path, "w").close()
 
-    with open(history_file_path, "r") as f:
-        blocks = f.read().split("\n\n")[:-1]
+        with open(self.history_file_path, "r") as f:
+            blocks = f.read().split("\n\n")[:-1]
 
-    return blocks[-n:]
+        return blocks[-n:]
 
-
-def modify_history(history_file_path, query, response, status):
-    with open(history_file_path, "a") as f:
-        f.write(f"Question: {query}\nAnswer: {response}\nStatus: {status}\n\n")
+    def modify_history(self, query, response, status):
+        with open(self.history_file_path, "a") as f:
+            f.write(f"Question: {query}\nAnswer: {response}\nStatus: {status}\n\n")
 
 
 def main():
     temp_dir = tempfile.gettempdir()
     history_file_path = os.path.join(temp_dir, "history.txt")
+    history_manager = HistoryManager(history_file_path)
 
     parser = argparse.ArgumentParser(
         description="Conv is a command line tool to easily execute file conversions, image manipulations, and file operations quickly."
@@ -219,12 +230,12 @@ def main():
     args = parser.parse_args()
 
     if args.clear:
-        clear_history(history_file_path)
+        history_manager.clear_history()
         print("\033[1;32;40mHistory cleared.\033[0m")
         return
 
     if args.hist:
-        history = get_recent_history(5, history_file_path)
+        history = history_manager.get_recent_history(5)
         print("\033[1;32;40mRecent History:\033[0m")
         for item in history:
             print(item + "\n")
@@ -232,7 +243,7 @@ def main():
 
     if args.key:
         new_api_key = args.key
-        command_parser = CommandParser("", history_file_path, new_api_key)
+        command_parser = CommandParser("", history_manager, new_api_key)
         print(f"\033[1;32;40mAPI Key updated successfully to: {new_api_key}\033[0m")
         return
 
@@ -245,13 +256,13 @@ def main():
     query = " ".join(args.query)
     print("\033[1;34;40mQuerying: " + query + "\033[0m")
 
-    command_parser = CommandParser(query, history_file_path)
+    command_parser = CommandParser(query, history_manager)
     system_command = command_parser.parse()
 
     if system_command:
         print("\033[1;36;40mRunning command: " + system_command + "\033[0m")
         status = CommandExecutor.execute(system_command)
-        modify_history(history_file_path, query, system_command, status)
+        history_manager.modify_history(query, system_command, status)
     else:
         print(
             "Could not parse or execute the command. Please ensure the command is valid."
