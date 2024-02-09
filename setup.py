@@ -5,7 +5,7 @@ setup(
     version="0.4.5",
     packages=find_packages(),
     entry_points={"console_scripts": ["conv=file_converter.convertly:main"]},
-    install_requires=["openai", "openpipe", "requests"],
+    install_requires=["requests"],
     python_requires=">=3.6",
     author="HudZah",
     author_email="hudzah@hudzah.com",
