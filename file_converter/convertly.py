@@ -68,13 +68,14 @@ class CommandParser:
         api_key = self.config_manager.get_api_key("OPENAI_API_KEY", "OPENAI")
         history = self.history_manager.get_recent_history(5)
         history_prompt = self._generate_history_prompt(history)
+        # internal_error_prompt = self._generate_internal_error_prompt()
         system_prompt = self._generate_system_prompt()
 
         messages = [
             {"role": "system", "content": system_prompt},
             {
                 "role": "user",
-                "content": "Answer this as briefly as possible and using the latest context: "
+                "content": "Answer this using the latest context, remember to explain your thinking using the echo command(echo 'explanation') and output code after. Task: "
                 + self.query,
             },
         ]
@@ -84,9 +85,17 @@ class CommandParser:
                 1,
                 {
                     "role": "user",
-                    "content": history_prompt,
+                    "content": history_prompt
+                    + ' NOTE: If the last command produced an error you must explain the problem and the solution to that problem".',
                 },
             )
+        # messages.insert(
+        #     2,
+        #     {
+        #         "role": "user",
+        #         "content": internal_error_prompt,
+        #     },
+        # )
         print(f"\033[1;33;40mRunning...\033[0m", end="\r")
         response, status_code = self.get_command(api_key, messages)
         if status_code != 200:
@@ -99,25 +108,27 @@ class CommandParser:
 
     def _generate_history_prompt(self, history):
         return (
-            "For context, here's the history of the last five questions, answers and the status of their execution, if a query has failed, try something different. \n\n"
+            "For context, here's the history of the last five questions, answers and the status of their execution, if an error occured you must not use that command again. \n\n"
             + "\n".join(history)
         )
 
-    def _generate_system_prompt(self):
+    def _generate_internal_error_prompt(self):
         latest_history_status = self.history_manager.get_recent_history(1)
+        status_part = "No error"
         if latest_history_status:
             status_part = latest_history_status[0].split("Status: ")[-1]
-        else:
-            status_part = "No error"
 
-        return f"""You are a command line utility for the {platform.system()} OS that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolutely necessary, you may execute Python code to do a conversion. Your responses should be clear and console-friendly. If there are file or folder paths, then they MUST be quoted in your response.
+        return f"""If the following does not contain "No error", then "{status_part}", YOU MUST echo why the error occurred FIRST in the format echo "Error: (error)", and consider it when generating the next command, only if it's relevant. If there is no error, IGNORE this."""
 
-        If there is an error, echo the problem and why the error: {status_part} occurred in the format echo "Error: (error)", and consider it when generating the next command, only if it's relevant. If there is no error, ignore this.
+    def _generate_system_prompt(self):
+
+        return f"""You are a command line utility for the {platform.system()} OS that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolutely necessary, you may execute Python code to do a conversion by creating a python file and running it. Your responses should be clear and console-friendly. If there are file or folder paths, then they MUST be quoted in your response.
 
         Things to NOT do:
 
         - Do not include codeblocks or any ``` in your response, this is not a bash script, it is a command line utility. Commands should be directly executable in the command line.
         - Do not assume a user has pre-requisite packages installed, always install it anyways. 
+        - Do not rename file extensions for conversions, unless the user specifically asks for it.
 
 Here's how your responses should look:
 
@@ -126,8 +137,10 @@ EXAMPLE 1
 <Users Question>
 conv file.webp to png
 <Your Answer>
+echo "Explanation: I will use dwebp to convert the file to a png."
 dwebp "file.webp" -o "file.png"
 <User Question>
+echo "Explanation: To rotate the image by 90 degrees, I will use imagemagick."
 rotate that image by 90 degrees
 <Your Answer>
 brew install imagemagick
@@ -136,38 +149,26 @@ convert "file.png" -rotate 90 "rotated_file.png"
 EXAMPLE 2
 
 <Users Question>
-rotate an image by 90 degrees
+convert a video in /path/to/video.mp4 to a gif
 <Your Answer>
-brew install imagemagick
-convert "file.png" -rotate 90 "rotated_file.png"
+echo "Explanation: I will use ffmpeg to convert the video to a gif."
+ffmpeg -i "/path/to/video.mp4" "/path/to/video.gif"
 
 EXAMPLE 3
 
 <Users Question>
-convert a video in /path/to/video.mp4 to a gif
+convert my pdf to docx, the file is /Users/path/file.pdf
 <Your Answer>
-ffmpeg -i "/path/to/video.mp4" "/path/to/video.gif"
+echo "Explanation: I will use pdf2docx to convert the pdf to a docx."
+pip install pdf2docx
+python3 -c "from pdf2docx import parse; pdf_file = r'/Users/path/file.pdf'; docx_file = r'/Users/path/file.docx'; parse(pdf_file, docx_file, start=0, end=None)"
 
 EXAMPLE 4
 
 <Users Question>
-avif to png for file.avif
-<Your Answer>
-magick "file.avif" "file.png"
-
-EXAMPLE 5
-
-<Users Question>
-convert my pdf to docx, the file is /Users/path/file.pdf
-<Your Answer>
-pip install pdf2docx
-python3 -c "from pdf2docx import parse; pdf_file = r'/Users/path/file.pdf'; docx_file = r'/Users/path/file.docx'; parse(pdf_file, docx_file, start=0, end=None)"
-
-EXAMPLE 6
-
-<Users Question>
 copy all of Documents/Screenshots to a folder called Screenshots2 in the same directory
 <Your Answer>
+echo "Explanation: I will use cp to copy the folder to a folder called Screenshots2."
 cp -a "Documents/Screenshots Documents/test"
 
 
@@ -180,19 +181,22 @@ class CommandExecutor:
         status = ""
         if command.startswith('echo "Error:'):
             print(
-                f"\033[1;31;40mAn error occurred while executing the command: {command.split('Error: ')[-1]}\033[0m"
+                f"\033[1;31;40mThe previous command failed: {command.split('Error: ')[-1]}\033[0m"
             )
             status = f"An error occurred while executing the command: {command.split('Error: ')[-1]}"
         else:
             try:
-                subprocess.run(command, check=True, shell=True)
+                subprocess.run(command, check=True, shell=True, text=True)
                 print(f"\033[1;32;40mExecuted: {command}\033[0m")
+                # print(f"Output: {result.stdout}")
                 status = "Success"
             except subprocess.CalledProcessError as e:
                 print(
                     f"\033[1;31;40mAn error occurred while executing the command: {e}\033[0m"
                 )
-                status = f"An error occurred while executing the command: {e}"
+                # figure out a better way to capture relevant output and feed it back
+                print(f"Error info: {e.stderr}")
+                status = f"An error occurred while executing the command: {e}, Error info: {e.stderr}"
         return status
 
 
