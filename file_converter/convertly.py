@@ -10,7 +10,9 @@ import requests
 class ConfigManager:
     def __init__(self):
         self.config = configparser.ConfigParser()
-        self.config.read("config.ini")
+        self.config_path = os.path.expanduser("~/.config/convertly/config.ini")
+        os.makedirs(os.path.expanduser("~/.config/convertly/"), exist_ok=True)
+        self.config.read(self.config_path)
 
     def get_api_key(self, key_name, section_name):
         api_key = os.getenv(key_name)
@@ -22,7 +24,7 @@ class ConfigManager:
             if not api_key:
                 api_key = input(f"Please enter your {section_name} key: ")
             self.config[section_name] = {"API_KEY": api_key}
-            with open("config.ini", "w") as configfile:
+            with open(os.path.expanduser(self.config_path), "w") as configfile:
                 self.config.write(configfile)
         else:
             api_key = self.config[section_name]["API_KEY"]
@@ -30,7 +32,7 @@ class ConfigManager:
 
     def set_api_key(self, key_name, section_name, new_api_key):
         self.config[section_name] = {"API_KEY": new_api_key}
-        with open("config.ini", "w") as configfile:
+        with open(os.path.expanduser(self.config_path), "w") as configfile:
             self.config.write(configfile)
 
 
@@ -44,7 +46,7 @@ class CommandParser:
 
     def get_command(self, api_key, messages):
         # url = "http://127.0.0.1:5000/api"
-        url = "https://convertly-41cf77f682ee.herokuapp.com/api"
+        url = "https://conv.pavitarsaini.com/api"
 
         data = {
             "api_key": api_key,
@@ -68,7 +70,6 @@ class CommandParser:
         api_key = self.config_manager.get_api_key("OPENAI_API_KEY", "OPENAI")
         history = self.history_manager.get_recent_history(5)
         history_prompt = self._generate_history_prompt(history)
-        # internal_error_prompt = self._generate_internal_error_prompt()
         system_prompt = self._generate_system_prompt()
 
         messages = [
@@ -89,13 +90,7 @@ class CommandParser:
                     + ' NOTE: If the last command produced an error you must explain the problem and the solution to that problem".',
                 },
             )
-        # messages.insert(
-        #     2,
-        #     {
-        #         "role": "user",
-        #         "content": internal_error_prompt,
-        #     },
-        # )
+
         print(f"\033[1;33;40mRunning...\033[0m", end="\r")
         response, status_code = self.get_command(api_key, messages)
         if status_code != 200:
