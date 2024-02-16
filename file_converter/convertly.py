@@ -11,7 +11,12 @@ class ConfigManager:
     def __init__(self):
         self.config = configparser.ConfigParser()
         self.config_path = os.path.expanduser("~/.config/convertly/config.ini")
-        os.makedirs(os.path.expanduser("~/.config/convertly/"), exist_ok=True)
+        if not os.path.exists(os.path.dirname(self.config_path)):
+            os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
+            with open(
+                self.config_path, "w"
+            ):  # Create the config file if it does not exist
+                pass
         self.config.read(self.config_path)
 
     def get_api_key(self, key_name, section_name):
@@ -23,24 +28,28 @@ class ConfigManager:
         ):
             if not api_key:
                 api_key = input(f"Please enter your {section_name} key: ")
-            self.config[section_name] = {"API_KEY": api_key}
-            with open(os.path.expanduser(self.config_path), "w") as configfile:
+            if not self.config.has_section(section_name):
+                self.config.add_section(section_name)
+            self.config.set(section_name, "API_KEY", api_key)
+            with open(self.config_path, "w") as configfile:
                 self.config.write(configfile)
         else:
             api_key = self.config[section_name]["API_KEY"]
         return api_key
 
     def set_api_key(self, key_name, section_name, new_api_key):
-        self.config[section_name] = {"API_KEY": new_api_key}
-        with open(os.path.expanduser(self.config_path), "w") as configfile:
+        if not self.config.has_section(section_name):
+            self.config.add_section(section_name)
+        self.config.set(section_name, "API_KEY", new_api_key)
+        with open(self.config_path, "w") as configfile:
             self.config.write(configfile)
 
 
 class CommandParser:
-    def __init__(self, query, history_manager, new_api_key=None):
+    def __init__(self, query, history_manager, config_manager, new_api_key=None):
         self.query = query
         self.history_manager = history_manager
-        self.config_manager = ConfigManager()
+        self.config_manager = config_manager
         if new_api_key:
             self.config_manager.set_api_key("OPENAI_API_KEY", "OPENAI", new_api_key)
 
@@ -221,6 +230,7 @@ def main():
     temp_dir = tempfile.gettempdir()
     history_file_path = os.path.join(temp_dir, "history.txt")
     history_manager = HistoryManager(history_file_path)
+    config_manager = ConfigManager()
 
     parser = argparse.ArgumentParser(
         description="Conv is a command line tool to easily execute file conversions, image manipulations, and file operations quickly."
@@ -248,7 +258,7 @@ def main():
 
     if args.key:
         new_api_key = args.key
-        command_parser = CommandParser("", history_manager, new_api_key)
+        command_parser = CommandParser("", history_manager, config_manager, new_api_key)
         print(f"\033[1;32;40mAPI Key updated successfully to: {new_api_key}\033[0m")
         return
 
