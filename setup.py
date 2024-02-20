@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="convertly",
-    version="0.5.0",
+    version="0.5.2",
     packages=find_packages(),
     entry_points={"console_scripts": ["conv=file_converter.convertly:main"]},
     install_requires=["requests"],

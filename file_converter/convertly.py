@@ -271,7 +271,7 @@ def main():
     query = " ".join(args.query)
     print("\033[1;34;40mQuerying: " + query + "\033[0m")
 
-    command_parser = CommandParser(query, history_manager)
+    command_parser = CommandParser("", history_manager, config_manager, args.key)
     system_command = command_parser.parse()
 
     if system_command:
