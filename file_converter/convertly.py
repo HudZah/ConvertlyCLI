@@ -4,7 +4,7 @@ import tempfile
 import os
 import configparser
 import platform
-import requests
+import anthropic
 
 
 class ConfigManager:
@@ -54,51 +54,104 @@ class CommandParser:
             self.config_manager.set_api_key("OPENAI_API_KEY", "OPENAI", new_api_key)
 
     def get_command(self, api_key, messages):
-        # url = "http://127.0.0.1:5000/api"
-        url = "https://conv.pavitarsaini.com/api"
-
-        data = {
-            "api_key": api_key,
-            "messages": messages,
-        }
-        request = requests.post(url, json=data)
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_KEY"))
         try:
-            data = request.json()
+            message = client.messages.create(
+                model="claude-3-5-sonnet-20240620",
+                max_tokens=1024,
+                temperature=0.5,
+                system=f"""You will provide runnable commands for file conversion tasks in the command line. It follows these guidelines:
+
+- Uses built-in Unix commands whenever possible
+- Can run multiple commands and include multiple lines if needed
+- May install libraries for intricate conversion tasks
+- When creating directories for output files, use the same path as the input file unless specified otherwise
+- Ignores format codes in file output names
+- Outputs only the executable command, as it will be executed directly in the command line
+- Uses "magick" instead of "convert" or "magick convert" for ImageMagick commands
+
+
+Bad outputs are:
+- Explanations or commentary on the commands
+- Anything other than the runnable command itself
+- Commands that create directories in incorrect locations or use inconsistent paths
+
+
+<examples>
+<example_docstring>
+This example shows a simple file conversion command provided directly in the conversation.
+</example_docstring>
+
+<example>
+<user_query>Convert image.jpg to image.png</user_query>
+
+<assistant_response>
+magick image.jpg image.png
+</assistant_response>
+</example>
+
+<example_docstring>
+This example demonstrates a more complex conversion.
+</example_docstring>
+
+<example>
+<user_query>Convert all .tiff files in the current directory to .jpg, resize them to 800x600, and apply a sepia filter.</user_query>
+
+<assistant_response>
+for file in *.tiff; do
+    output_file="${{file%.tiff}}.jpg"
+    magick "$file" -resize 800x600 -sepia-tone 80% "$output_file"
+done
+</assistant_response>
+</example>
+
+<example_docstring>
+This example shows how to convert a video file to multiple formats while creating the output directory correctly.
+</example_docstring>
+
+<example>
+<user_query>Convert /Users/username/Videos/input.mp4 to gif, mp4 (compressed), and mp3. Save the outputs in a new folder called "converted" in the same directory as the input.</user_query>
+
+<assistant_response>
+input_dir=$(dirname "/Users/username/Videos/input.mp4")
+mkdir -p "$input_dir/converted" && \
+ffmpeg -i "/Users/username/Videos/input.mp4" -vf "fps=10,scale=320:-1:flags=lanczos" "$input_dir/converted/input.gif" && \
+ffmpeg -i "/Users/username/Videos/input.mp4" -c:v libx264 -crf 23 -preset medium -c:a aac -b:a 128k "$input_dir/converted/input_compressed.mp4" && \
+ffmpeg -i "/Users/username/Videos/input.mp4" -vn -acodec libmp3lame -b:a 128k "$input_dir/converted/input.mp3"
+</assistant_response>
+</example>
+</examples>""",
+                messages=messages,
+            )
+
+            response_text = str(message.content[0].text) if message.content else ""
+
+            return response_text, 200
         except Exception as e:
-            print(f"Error: {e}")
-            data = {"status": 500, "response": "Error: " + str(e)}
-        response = data.get("response", "")
-        status_code = int(data.get("status", 500))
-
-        if status_code != 200:
-            raise Exception(f"Error: {status_code} - {response}")
-
-        return response, status_code
+            return str(e), 400
 
     def parse(self):
         api_key = self.config_manager.get_api_key("OPENAI_API_KEY", "OPENAI")
         history = self.history_manager.get_recent_history(5)
-        history_prompt = self._generate_history_prompt(history)
-        system_prompt = self._generate_system_prompt()
+        # history_prompt = self._generate_history_prompt(history)
+        system_prompt = self._generate_system_prompt_claude()
 
         messages = [
-            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
-                "content": "Answer this using the latest context, remember to explain your thinking using the echo command(echo 'explanation') and output code after. Task: "
-                + self.query,
-            },
+                "content": f"Answer this using the latest context. Task: {self.query}",
+            }
         ]
 
-        if history:
-            messages.insert(
-                1,
-                {
-                    "role": "user",
-                    "content": history_prompt
-                    + ' NOTE: If the last command produced an error you must explain the problem and the solution to that problem".',
-                },
-            )
+        # if history:
+        #     messages.insert(
+        #         1,
+        #         {
+        #             "role": "user",
+        #             "content": history_prompt
+        #             + ' NOTE: If the last command produced an error you must explain the problem and the solution to that problem".',
+        #         },
+        #     )
 
         print(f"\033[1;33;40mRunning...\033[0m", end="\r")
         response, status_code = self.get_command(api_key, messages)
@@ -112,7 +165,7 @@ class CommandParser:
 
     def _generate_history_prompt(self, history):
         return (
-            "For context, here's the history of the last five questions, answers and the status of their execution, if an error occured you must not use that command again. \n\n"
+            "Here's the history of the last five questions, answers and the status of their execution, if an error occured you must not use that command again. \n\n"
             + "\n".join(history)
         )
 
@@ -124,58 +177,105 @@ class CommandParser:
 
         return f"""If the following does not contain "No error", then "{status_part}", YOU MUST echo why the error occurred FIRST in the format echo "Error: (error)", and consider it when generating the next command, only if it's relevant. If there is no error, IGNORE this."""
 
-    def _generate_system_prompt(self):
+    def _generate_system_prompt_openai(self):
 
-        return f"""You are a command line utility for the {platform.system()} OS that quickly and succinctly converts images, videos, files and manipulates them. When a user asks a question, you MUST respond with ONLY the most relevant command that will be executed within the command line, along with the required packages that need to be installed. If absolutely necessary, you may execute Python code to do a conversion by creating a python file and running it. Your responses should be clear and console-friendly. If there are file or folder paths, then they MUST be quoted in your response.
+        return f"""
+You will provide runnable commands for file conversion tasks in the command line. It follows these guidelines:
 
-        Things to NOT do:
+- Uses built-in Unix commands whenever possible
+- Prioritize doing conversions in as few commands as possible
+- May install libraries for intricate conversion tasks
+- Exports the final version of a file to the same location as the origin, unless explicitly asked otherwise
+- Ignores format codes in file output names
+- Outputs only the executable command, as it will be executed directly in the command line
+- Uses "magick" instead of "convert" or "magick convert" for ImageMagick commands
 
-        - Do not include codeblocks or any ``` in your response, this is not a bash script, it is a command line utility. Commands should be directly executable in the command line.
-        - Do not assume a user has pre-requisite packages installed, always install it anyways. 
-        - Do not rename file extensions for conversions, unless the user specifically asks for it.
+Good commands for this task are:
+- Complete, runnable command-line scripts
+- Multi-step conversion processes
+- Scripts that may be reused or modified for similar conversion tasks
 
-Here's how your responses should look:
+Bad outputs are:
+- Explanations or commentary on the commands
+- Anything other than the runnable command itself
+- Including codefences, codeblocks or any ``` in your response. This is not markdown.
 
-EXAMPLE 1
+Usage notes:
+- The assistant provides only the command(s) to be executed, with no additional text or explanation
+- Commands should be complete and ready to run in a Unix-like environment
+- If multiple steps are required, they should be combined into a single, executable script or command chain
 
-<Users Question>
-conv file.webp to png
-<Your Answer>
-echo "Explanation: I will use dwebp to convert the file to a png."
-dwebp "file.webp" -o "file.png"
-<User Question>
-echo "Explanation: To rotate the image by 90 degrees, I will use imagemagick."
-rotate that image by 90 degrees
-<Your Answer>
-brew install imagemagick
-convert "file.png" -rotate 90 "rotated_file.png"
+These examples show simple file conversions.
 
-EXAMPLE 2
+Example 1:
+Convert image.jpg to image.png
 
-<Users Question>
-convert a video in /path/to/video.mp4 to a gif
-<Your Answer>
-echo "Explanation: I will use ffmpeg to convert the video to a gif."
-ffmpeg -i "/path/to/video.mp4" "/path/to/video.gif"
-
-EXAMPLE 3
-
-<Users Question>
-convert my pdf to docx, the file is /Users/path/file.pdf
-<Your Answer>
-echo "Explanation: I will use pdf2docx to convert the pdf to a docx."
-pip install pdf2docx
-python3 -c "from pdf2docx import parse; pdf_file = r'/Users/path/file.pdf'; docx_file = r'/Users/path/file.docx'; parse(pdf_file, docx_file, start=0, end=None)"
-
-EXAMPLE 4
-
-<Users Question>
-copy all of Documents/Screenshots to a folder called Screenshots2 in the same directory
-<Your Answer>
-echo "Explanation: I will use cp to copy the folder to a folder called Screenshots2."
-cp -a "Documents/Screenshots Documents/test"
+magick image.jpg image.png
 
 
+Example 2:
+Convert all .tiff files in the current directory to .jpg, resize them to 800x600, and apply a sepia filter.
+
+for file in *.tiff; do
+    output_file="${{file%.tiff}}.jpg"
+    magick "$file" -resize 800x600 -sepia-tone 80% "$output_file"
+done
+"""
+
+    def _generate_system_prompt_claude(self):
+        return f"""
+        You will provide runnable commands for file conversion tasks in the command line. It follows these guidelines:
+
+- Uses built-in Unix commands whenever possible
+- Can run multiple commands and include multiple lines if needed
+- May install libraries for intricate conversion tasks
+- Exports the final version of a file to the same location as the origin, unless explicitly asked otherwise
+- Ignores format codes in file output names
+- Outputs only the executable command, as it will be executed directly in the command line
+- Uses "magick" instead of "convert" or "magick convert" for ImageMagick commands
+
+Good commands for this task are:
+- Complete, runnable command-line scripts
+- Using the simplest, most common and most efficient commands
+- Scripts that may be reused or modified for similar conversion tasks
+
+Bad outputs are:
+- Explanations or commentary on the commands
+- Anything other than the runnable command itself
+
+Usage notes:
+- The assistant provides only the command(s) to be executed, with no additional text or explanation
+- Commands should be complete and ready to run in a Unix-like environment
+- If multiple steps are required, they should be combined into a single, executable script or command chain
+
+<examples>
+<example_docstring>
+This example shows a simple file conversion command provided directly in the conversation.
+</example_docstring>
+
+<example>
+<user_query>Convert image.jpg to image.png</user_query>
+
+<assistant_response>
+magick image.jpg image.png
+</assistant_response>
+</example>
+
+<example_docstring>
+This example demonstrates a more complex conversion.
+</example_docstring>
+
+<example>
+<user_query>Convert all .tiff files in the current directory to .jpg, resize them to 800x600, and apply a sepia filter.</user_query>
+
+<assistant_response>
+for file in *.tiff; do
+    output_file="${{file%.tiff}}.jpg"
+    magick "$file" -resize 800x600 -sepia-tone 80% "$output_file"
+done
+</assistant_response>
+</example>
+</examples>
 """
 
 
@@ -271,7 +371,7 @@ def main():
     query = " ".join(args.query)
     print("\033[1;34;40mQuerying: " + query + "\033[0m")
 
-    command_parser = CommandParser("", history_manager, config_manager, args.key)
+    command_parser = CommandParser(query, history_manager, config_manager, args.key)
     system_command = command_parser.parse()
 
     if system_command:

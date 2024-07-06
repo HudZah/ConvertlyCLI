@@ -1,4 +1,4 @@
-#!/Users/hudzah/Documents/Coding/file_converter/venv/bin/python3.11
+#!/Users/hudzah/Documents/Coding/file_converter/venv/bin/python3.12
 # -*- coding: utf-8 -*-
 import re
 import sys
