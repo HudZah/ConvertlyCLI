@@ -60,71 +60,16 @@ class CommandParser:
                 model="claude-3-5-sonnet-20240620",
                 max_tokens=1024,
                 temperature=0.5,
-                system=f"""You will provide runnable commands for file conversion tasks in the command line. It follows these guidelines:
-
-- Uses built-in Unix commands whenever possible
-- Can run multiple commands and include multiple lines if needed
-- May install libraries for intricate conversion tasks
-- When creating directories for output files, use the same path as the input file unless specified otherwise
-- Ignores format codes in file output names
-- Outputs only the executable command, as it will be executed directly in the command line
-- Uses "magick" instead of "convert" or "magick convert" for ImageMagick commands
-
-
-Bad outputs are:
-- Explanations or commentary on the commands
-- Anything other than the runnable command itself
-- Commands that create directories in incorrect locations or use inconsistent paths
-
-
-<examples>
-<example_docstring>
-This example shows a simple file conversion command provided directly in the conversation.
-</example_docstring>
-
-<example>
-<user_query>Convert image.jpg to image.png</user_query>
-
-<assistant_response>
-magick image.jpg image.png
-</assistant_response>
-</example>
-
-<example_docstring>
-This example demonstrates a more complex conversion.
-</example_docstring>
-
-<example>
-<user_query>Convert all .tiff files in the current directory to .jpg, resize them to 800x600, and apply a sepia filter.</user_query>
-
-<assistant_response>
-for file in *.tiff; do
-    output_file="${{file%.tiff}}.jpg"
-    magick "$file" -resize 800x600 -sepia-tone 80% "$output_file"
-done
-</assistant_response>
-</example>
-
-<example_docstring>
-This example shows how to convert a video file to multiple formats while creating the output directory correctly.
-</example_docstring>
-
-<example>
-<user_query>Convert /Users/username/Videos/input.mp4 to gif, mp4 (compressed), and mp3. Save the outputs in a new folder called "converted" in the same directory as the input.</user_query>
-
-<assistant_response>
-input_dir=$(dirname "/Users/username/Videos/input.mp4")
-mkdir -p "$input_dir/converted" && \
-ffmpeg -i "/Users/username/Videos/input.mp4" -vf "fps=10,scale=320:-1:flags=lanczos" "$input_dir/converted/input.gif" && \
-ffmpeg -i "/Users/username/Videos/input.mp4" -c:v libx264 -crf 23 -preset medium -c:a aac -b:a 128k "$input_dir/converted/input_compressed.mp4" && \
-ffmpeg -i "/Users/username/Videos/input.mp4" -vn -acodec libmp3lame -b:a 128k "$input_dir/converted/input.mp3"
-</assistant_response>
-</example>
-</examples>""",
+                system='You will provide runnable commands for file conversion tasks in the command line. It follows these guidelines:\n\n- Uses built-in Unix commands whenever possible\n- Can run multiple commands and include multiple lines if needed\n- May install libraries for intricate conversion tasks\n- When creating directories for output files, use the same path as the input file unless specified otherwise\n- Ignores format codes in file output names\n- Uses "magick" instead of "convert" or "magick convert" for ImageMagick commands\n\n\nBad outputs are:\n- Explanations or commentary on the commands\n- Anything other than the runnable command itself\n- Commands that create directories in incorrect locations or use inconsistent paths\n\n\n<examples>\n<example_docstring>\nThis example demonstrates a more complex conversion.\n</example_docstring>\n\n<example>\n<user_query>Convert all .tiff files in the current directory to .jpg, resize them to 800x600, and apply a sepia filter.</user_query>\n\n<assistant_response>\nfor file in *.tiff; do\n    output_file="${file%.tiff}.jpg"\n    magick "$file" -resize 800x600 -sepia-tone 80% "$output_file"\ndone\n</assistant_response>\n</example>\n\n<example_docstring>\nThis example shows how to convert a video file to multiple formats while creating the output directory correctly.\n</example_docstring>\n\n<example>\n<user_query>Convert /Users/username/Videos/input.mp4 to gif, mp4 (compressed), and mp3. Save the outputs in a new folder called "converted" in the same directory as the input.</user_query>\n\n<assistant_response>\ninput_dir=$(dirname "/Users/username/Videos/input.mp4")\nmkdir -p "$input_dir/converted" && \\\nffmpeg -i "/Users/username/Videos/input.mp4" -vf "fps=10,scale=320:-1:flags=lanczos" "$input_dir/converted/input.gif" && \\\nffmpeg -i "/Users/username/Videos/input.mp4" -c:v libx264 -crf 23 -preset medium -c:a aac -b:a 128k "$input_dir/converted/input_compressed.mp4" && \\\nffmpeg -i "/Users/username/Videos/input.mp4" -vn -acodec libmp3lame -b:a 128k "$input_dir/converted/input.mp3"\n</assistant_response>\n</example>\n</examples>',
                 messages=messages,
             )
 
             response_text = str(message.content[0].text) if message.content else ""
+            input_tokens = message.usage.input_tokens
+            output_tokens = message.usage.output_tokens
+
+            print(f"Input tokens: {input_tokens}")
+            print(f"Output tokens: {output_tokens}")
 
             return response_text, 200
         except Exception as e:
